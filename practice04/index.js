@@ -218,14 +218,14 @@ app.get("/api/v1/customers/:cId", async (req, res) => {
 })
 
         // Task 3
-app.get("/api/v1/customers/:customerId/orders", async (req, res) => {
+app.get("/api/v1/customers/:cId/orders", async (req, res) => {
     try {
-        const {customerId} = req.params
+        const {cId} = req.params
 
-        const customer = await CustomerModel.findOne({id: customerId})
+        const customer = await CustomerModel.findOne({id: cId})
         if (!customer) throw new Error('Customer does not exist');
 
-        const orders = await OrderModel.find({customerId})
+        const orders = await OrderModel.find({customerId: cId})
 
         res.status(201).send({
           message: 'Order found!',
@@ -255,11 +255,131 @@ app.get("/api/v1/orders/highvalue", async (req, res) => {
             // $and (Logical AND)
         const highValueOrders = await OrderModel.find({ totalPrice: { $gt: minPrice } });
 
-        res.status(200).send({
+        res.status(201).send({
             message: "Orders retrieved successfully",
             data: highValueOrders,
             success: true
         });
+    } catch (error) {
+        res.status(403).send({
+            message: error.message,
+            data: null,
+            success: false
+        });
+    }
+});
+
+        // Task 5
+app.get("/api/v1/products", async (req,res) => {
+    try {
+        const minPrice = parseInt(req.query.minPrice) || 0
+        const maxPrice = parseInt(req.query.maxPrice) || Infinity
+    
+        const products = await ProductModel.find({
+            price: {$gte: minPrice, $lte: maxPrice}
+        })
+
+        res.status(201).send({
+            message: "Products retrieved successfully",
+            data: products,
+            success: true
+        })
+
+    } catch (err) {
+        res.status(403).send({
+            message: err.message,
+            data: null,
+            success: false
+        })
+    }
+})
+
+        // Task 7
+app.post("/api/v1/orders", async (req, res) => {
+    try {
+        const {orderId, customerId, productId, quantity} = req.body
+    
+        if (!orderId || !customerId || !productId || !quantity) throw new Error("All fields (orderId, customerId, productId, quantity) are required")
+    
+        const product = await ProductModel.findOne({id: productId})
+        if (!product || quantity > product.quantity) throw new Error("Invalid Product")
+        
+        const totalPrice = product.price * quantity
+        product.quantity -= quantity;
+        await product.save();
+    
+        const createdOrder = await OrderModel.create({
+            orderId,
+            customerId,
+            productId,
+            quantity,
+            totalPrice
+        })
+        
+
+        res.status(201).send({
+            message: "Order created successfully",
+            data: createdOrder,
+            success: true
+        })
+
+    } catch (error) {
+        res.status(403).send({
+            message: error.message,
+            data: null,
+            success: false
+        })
+    }
+})
+
+        // Task 8
+app.put('/api/v1/orders/:orderId', async (req, res) => {
+    try {
+        const {orderId} = req.params
+        const { quantity } = req.body;
+
+        const order = await OrderModel.findOne({orderId: orderId});
+        if (!order) throw new Error('Order not found');
+
+        const product = await ProductModel.findOne({ id: order.productId });
+        if (!product || product.quantity + order.quantity < quantity) throw new Error('Insufficient product stock');
+
+        product.quantity += order.quantity - quantity;
+        order.quantity = quantity;
+        order.totalPrice = product.price * quantity;
+
+        await order.save();
+        await product.save();
+
+        res.status(201).send({
+            message: 'Order updated successfully!',
+            data: order,
+            success: true
+        });
+
+    } catch (error) {
+        res.status(403).send({
+            message: error.message,
+            data: null,
+            success: false
+        });
+    }
+});
+
+        // Task 9
+app.delete('/api/v1/customers/:cId', async (req, res) => {
+    try {
+        const {cId} = req.params
+
+        const deletedCustomer = await CustomerModel.findOneAndDelete({id: cId});
+        if (!deletedCustomer) throw new Error('Customer not found');
+
+        res.status(201).send({
+            message: 'Customer deleted successfully',
+            data: deletedCustomer,
+            success: true
+        });
+
     } catch (error) {
         res.status(403).send({
             message: error.message,
