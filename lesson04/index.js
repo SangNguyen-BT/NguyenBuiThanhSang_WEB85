@@ -298,16 +298,15 @@ app.get("/api/v1/products", async (req,res) => {
 app.post("/api/v1/orders", async (req, res) => {
     try {
         const {orderId, customerId, productId, quantity} = req.body
-    
-        if (!orderId || !customerId || !productId || !quantity) throw new Error("All fields (orderId, customerId, productId, quantity) are required")
+
+        const customer = await CustomerModel.findOne({id: customerId})
+        if (!customer) throw new Error("Customer not found")
     
         const product = await ProductModel.findOne({id: productId})
         if (!product || quantity > product.quantity) throw new Error("Invalid Product")
         
         const totalPrice = product.price * quantity
-        product.quantity -= quantity;
-        await product.save();
-    
+
         const createdOrder = await OrderModel.create({
             orderId,
             customerId,
@@ -316,6 +315,8 @@ app.post("/api/v1/orders", async (req, res) => {
             totalPrice
         })
         
+        product.quantity -= quantity;
+        await product.save();
 
         res.status(201).send({
             message: "Order created successfully",
@@ -335,7 +336,7 @@ app.post("/api/v1/orders", async (req, res) => {
         // Task 8
 app.put('/api/v1/orders/:orderId', async (req, res) => {
     try {
-        const {orderId} = req.params
+        const { orderId } = req.params
         const { quantity } = req.body;
 
         const order = await OrderModel.findOne({orderId: orderId});
