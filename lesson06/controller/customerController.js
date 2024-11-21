@@ -3,7 +3,7 @@ import OrderModel from "../model/orders.js"
 
 export const createCustomer = async (req, res, next) => {
     try {
-        const {id, name, email, age} = req.body
+        const {id, name, email, age, password, role} = req.body
 
         if (!id || !name || !email || !age) throw new Error("Invalid data")
 
@@ -11,10 +11,10 @@ export const createCustomer = async (req, res, next) => {
         if (existedEmail) throw new Error("Email is already existed!")
 
         const createdCustomer = await CustomerModel.create({
-            id, name, email, age
+            id, name, email, age, password, role
         })
 
-        res.status(201).send({
+        return res.status(201).send({
             message: "Register successfully!",
             data: createdCustomer,
             success: true
@@ -25,50 +25,42 @@ export const createCustomer = async (req, res, next) => {
     }
 }
 
-export const getAllCustomers = async (req, res) => {
+export const getAllCustomers = async (req, res, next) => {
     try {
         const { name } = req.query
         const filterCustomers = name ? { name } : {}
         const customers = await CustomerModel.find(filterCustomers)
 
-        res.status(201).send({
+        return res.status(201).send({
             message: "Get user successful",
             data: customers,
             success: true,
         })
 
     } catch (error) {
-        res.status(403).send({
-            message: error.message,
-            data: null,
-            success: false,
-        })
+        next(error)
     }
 }
 
-export const getCustomerById = async (req, res) => {
+export const getCustomerById = async (req, res, next) => {
     try {
         const { cId } = req.params
 
         const customer = await CustomerModel.findOne({id: cId})
         if (!customer) throw new Error("Customer does not exist")
 
-        res.status(201).send({
+        return res.status(201).send({
             message: "Get user successful",
             data: customer,
             success: true,
         })
 
     } catch (error) {
-        res.status(403).send({
-            message: error.message,
-            data: null,
-            success: false,
-        })
+        next(error)
     }
 }
 
-export const getCustomerOrders = async (req, res) => {
+export const getCustomerOrders = async (req, res, next) => {
     try {
         const { cId } = req.params
 
@@ -77,39 +69,31 @@ export const getCustomerOrders = async (req, res) => {
 
         const orders = await OrderModel.find({customerId: cId})
 
-        res.status(201).send({
+        return res.status(201).send({
             message: "Get user's order successful",
             data: orders,
             success: true,
         })
         
     } catch (error) {
-        res.status(403).send({
-            message: error.message,
-            data: null,
-            success: false,
-        })
+        next(error)
     }
 }
 
-export const deleteCustomer = async (req, res) => {
+export const deleteCustomer = async (req, res, next) => {
     try {
         const {cId} = req.params
 
         const deletedCustomer = await CustomerModel.findOneAndDelete({id: cId});
         if (!deletedCustomer) throw new Error('Customer not found');
 
-        res.status(201).send({
+        return res.status(201).send({
             message: 'Customer deleted successfully',
             data: deletedCustomer,
             success: true
         });
 
     } catch (error) {
-        res.status(403).send({
-            message: error.message,
-            data: null,
-            success: false
-        });
+        next(error)
     }
 }

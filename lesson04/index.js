@@ -177,7 +177,9 @@ app.post("/api/v1/customers", async (req,res) => {
         // Task 1
 app.get("/api/v1/customers", async (req, res) => {
     try {
-        const customers = await CustomerModel.find(req.query)
+        const { name } = req.query
+        const filterCustomers = name ? { name } : {}
+        const customers = await CustomerModel.find(filterCustomers)
 
         res.status(201).send({
             message: "Get user successful",
