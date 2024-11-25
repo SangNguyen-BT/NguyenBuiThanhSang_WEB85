@@ -377,7 +377,7 @@ app.delete('/api/v1/customers/:cId', async (req, res) => {
         const deletedCustomer = await CustomerModel.findOneAndDelete({id: cId});
         if (!deletedCustomer) throw new Error('Customer not found');
 
-        res.status(201).send({
+        res.status(200).send({
             message: 'Customer deleted successfully',
             data: deletedCustomer,
             success: true
