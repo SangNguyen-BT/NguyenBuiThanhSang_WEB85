@@ -2,7 +2,7 @@ import express from "express";
 import mongoose from "mongoose";
 import bcrypt from "bcrypt";
 import jwt from "jsonwebtoken";
-import dotenv from "dotenv";
+import dotenv, { populate } from "dotenv";
 
 import checkRegisterFields from "./middleware/checkRegister.js";
 import authToken from "./middleware/authToken.js";
@@ -120,7 +120,7 @@ app.get("/profile", authToken, async (req, res) => {
   }
 });
 
-// Task 6 * /// USER (ĐÃ ĐANG NHẬP) TẠO PROFILE THEO ROLE TƯƠNG ỨNG
+// Task 6 * /// ACCOUNT (ĐÃ ĐANG NHẬP) TẠO PROFILE THEO ROLE TƯƠNG ỨNG
 app.post("/create-profile", authToken, async (req, res, next) => {
   try {
     const { userId, role } = req.user;
@@ -136,6 +136,10 @@ app.post("/create-profile", authToken, async (req, res, next) => {
 
       const existedEmail = await CustomerModel.findOne({ email });
       if (existedEmail) return res.status(400).json("Email already exists");
+
+      const account = await AccountModel.findById(userId)
+      if (!account) return res.status(404).json("Account not found")
+      if (email !== account.email) return res.status(400).json("Email must match the registered email")
 
       newProfile = await CustomerModel.create({
         name,
@@ -155,6 +159,10 @@ app.post("/create-profile", authToken, async (req, res, next) => {
       const existedEmail = await EmployeeModel.findOne({ email });
       if (existedEmail) return res.status(400).json("Email already exists");
 
+      const account = await AccountModel.findById(userId)
+      if (!account) return res.status(404).json("Account not found")
+      if (email !== account.email) return res.status(400).json("Email must match the registered email")
+
       newProfile = await EmployeeModel.create({
         name,
         email,
@@ -172,6 +180,10 @@ app.post("/create-profile", authToken, async (req, res, next) => {
 
       const existedEmail = await ManagerModel.findOne({ email });
       if (existedEmail) return res.status(400).json("Email already exists");
+
+      const account = await AccountModel.findById(userId)
+      if (!account) return res.status(404).json("Account not found")
+      if (email !== account.email) return res.status(400).json("Email must match the registered email")
 
       newProfile = await ManagerModel.create({
         name,
@@ -224,10 +236,11 @@ app.post("/create-employee", authToken, async (req, res, next) => {
       return res.status(400).json("Email already exists");
     }
 
-    const manager = await ManagerModel.findById(userId)
+    const manager = await ManagerModel.findOne({accountId: userId})
 
     const salt = bcrypt.genSaltSync(10);
     const hash = bcrypt.hashSync(password, salt);
+
     const newAccount = await AccountModel.create({
       email,
       password: hash,
@@ -384,18 +397,21 @@ app.post("/create-orders", authToken, async (req, res, next) => {
   try {
     const {userId, role} = req.user
 
-    if (role !== "CUSTOMER") return res.status(400).json("Only Customer can create orders")
+    if (role !== "CUSTOMER") return res.status(400).json("Only Customer can create deposit")
 
     const {propertyId, depositAmount, date, status} = req.body
     if (!propertyId || !depositAmount || !date) return res.status(400).json("Missing fields: propertyId, depositAmount, date")
 
     const property = await PropertyModel.findById(propertyId)
     if (!property) return res.status(400).json("Property not found")
+    
+    const existingDeposit = await DepositOrdersModel.findOne({propertyId})
+    if (existingDeposit) return res.status(400).json("This property has already been reserved")
 
     if (property.status !== "On Sale") return res.status(400).json("Property is not available for sale")
 
-    const customer = await CustomerModel.findById(userId)
-
+    const customer = await CustomerModel.findOne({accountId: userId})
+    
     const newOrder = await DepositOrdersModel.create({
       customerId: customer._id,
       propertyId,
@@ -437,6 +453,146 @@ app.get("/deposit-orders", authToken, async (req, res, next) => {
     });
 
   } catch(error) {
+    return res.status(403).json({
+      message: error.message,
+      data: null,
+      success: false,
+    });
+  }
+})
+
+// Task 12 * /// CUSTOMER XEM PROFILE ORDER, TRẢ VỀ THÔNG TIN PROPERTY + EMPLOYEE (tên, email, sđt) TẠO PROP ĐÓ
+app.get("/my-order-profile", authToken, async (req, res, next) => {
+  try {
+    const { userId, role } = req.user
+
+    if (role !== "CUSTOMER") return res.status(400).json("Only Customer can view profile")
+
+    const customer = await CustomerModel.findOne({accountId: userId})
+    if (!customer) return res.status(400).json("Customer not found")
+
+    const depositOrder = await DepositOrdersModel.find({customerId: customer._id})
+    .populate({
+      path: "propertyId",
+      select: "address price area status managerId employeeId",
+      populate: [
+        {
+          path: "managerId",
+          select: "name email phone"
+        },
+        {
+          path: "employeeId",
+          select: "name email phone"
+        }
+      ]
+    })
+
+    if (!depositOrder.length) return res.status(404).json("No deposits found")
+
+    return res.status(200).json({
+      message: "Deposits fetched successfully",
+      data: depositOrder,
+      success: true,
+    });
+
+  } catch (error) {
+    return res.status(403).json({
+      message: error.message,
+      data: null,
+      success: false,
+    });
+  }
+})
+
+// Task 13 * /// EMPLOYEE(ONLY) GET PROFILE PROPERTY DO EMPL. ĐÓ TẠO
+app.get("/my-properties", authToken, async (req, res, next) => {
+  try {
+    const { userId, role} = req.user
+
+    if (role !== "EMPLOYEE" && role !== "MANAGER") return res.status(403).json("Only employees or managers can access this resource")
+
+    let properties;
+
+    if (role === "EMPLOYEE") {
+      const employee = await EmployeeModel.findOne({accountId: userId})
+
+      properties = await PropertyModel.find({employeeId: employee._id})
+      .select("address price area status")
+    }
+
+    if (role === "MANAGER") {
+      const manager = await ManagerModel.findOne({accountId: userId})
+
+      properties = await PropertyModel.find({managerId: manager._id})
+      .select("address price area status")
+    }
+
+    if (!properties || !properties.length) return res.status(400).json("No properties found on this user")
+
+    return res.status(200).json({
+      message: "Properties fetched successfully",
+      data: properties,
+      success: true,
+    });
+
+  } catch (error) {
+    return res.status(403).json({
+      message: error.message,
+      data: null,
+      success: false,
+    });
+  }
+})
+
+// Task 14 * /// MANAGER(ONLY) XEM TẤT CẢ CÁC ORDER TRÊN HỆ THỐNG
+app.get("/all-orders", authToken, async (req, res, next) => {
+  try {
+    const { userId, role } = req.user
+
+    if (role !== "MANAGER") return res.status(400).json("Only managers can access this resource")
+
+    const orders = await DepositOrdersModel.find()
+    .populate("customerId", "name email phone")
+    .populate("propertyId", "address price area status")
+
+    if (!orders || orders.length === 0) return res.status(400).json("No orders found in the system")
+
+    return res.status(200).json({
+      message: "Orders fetched successfully",
+      data: orders,
+      success: true,
+    });
+
+  } catch (error) {
+    return res.status(403).json({
+      message: error.message,
+      data: null,
+      success: false,
+    });
+  }
+})
+
+// Task 15 * /// MANAGER (ONLY) GET PROFILE CỦA TẤT CẢ EMPLOYEE DO M. TẠO
+app.get("/all-profiles", authToken, async (req, res, next) => {
+  try {
+    const { userId, role } = req.user
+
+    if (role !== "MANAGER") return res.status(400).json("Only Managers can view profiles")
+
+    const manager = await ManagerModel.findOne({accountId: userId})
+
+    const employees = await EmployeeModel.find({managerId: manager._id})
+    .select("name email phone department")
+
+    if (!employees || employees.length === 0) return res.status(400).json("No employees found under this management")
+
+    return res.status(200).json({
+      message: "Employees fetched successfully",
+      data: employees,
+      success: true,
+    });
+    
+  } catch (error) {
     return res.status(403).json({
       message: error.message,
       data: null,
